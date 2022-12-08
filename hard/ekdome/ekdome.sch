@@ -328,13 +328,13 @@ $EndComp
 $Comp
 L kicad_symbol_general:Conn_01x02 J30
 U 1 1 638FB0D0
-P 10950 960
-F 0 "J30" H 10880 1060 50  0000 L CNN
-F 1 "POWER" H 10810 750 50  0000 L CNN
-F 2 "kicad_footprint_general:PhoenixContact_MCV_1,5_2-G-3.81_1x02_P3.81mm_Vertical" H 10950 960 50  0001 C CNN
-F 3 "" H 10950 960 50  0001 C CNN
-	1    10950 960 
-	1    0    0    -1  
+P 10950 1060
+F 0 "J30" H 10880 1160 50  0000 L CNN
+F 1 "POWER" H 10810 850 50  0000 L CNN
+F 2 "kicad_footprint_general:PhoenixContact_MCV_1,5_2-G-3.81_1x02_P3.81mm_Vertical" H 10950 1060 50  0001 C CNN
+F 3 "" H 10950 1060 50  0001 C CNN
+	1    10950 1060
+	1    0    0    1   
 $EndComp
 Wire Wire Line
 	10750 960  10675 960 
@@ -462,7 +462,7 @@ U 1 1 6393E638
 P 7960 1240
 F 0 "C30" H 8048 1286 50  0000 L CNN
 F 1 "47uF" H 8048 1195 50  0000 L CNN
-F 2 "" H 7960 1240 50  0001 C CNN
+F 2 "kicad_footprint_general:CP_Elec_8x6.5" H 7960 1240 50  0001 C CNN
 F 3 "" H 7960 1240 50  0001 C CNN
 	1    7960 1240
 	1    0    0    -1  
@@ -1002,17 +1002,6 @@ Text Label 5400 3750 2    50   ~ 0
 VCC
 Text Label 5400 3950 2    50   ~ 0
 GND
-$Comp
-L kicad_symbol_general:D_Bridge_AA+- D31
-U 1 1 638FD990
-P 9300 1090
-F 0 "D31" H 9350 1355 50  0000 C CNN
-F 1 "MB10S" H 9350 1285 50  0000 C CNN
-F 2 "kicad_footprint_general:Diode_Bridge_MB10S" H 9340 1060 50  0001 C CNN
-F 3 "~" H 9340 1060 50  0001 C CNN
-	1    9300 1090
-	-1   0    0    -1  
-$EndComp
 Wire Wire Line
 	8950 1220 8950 1460
 Wire Wire Line
@@ -2145,4 +2134,15 @@ Wire Wire Line
 	1550 3850 1550 3900
 Wire Wire Line
 	1550 3195 1550 3300
+$Comp
+L kicad_symbol_general:D_Bridge_+-AA D31
+U 1 1 6590CFD9
+P 9300 1090
+F 0 "D31" H 9350 1360 50  0000 C CNN
+F 1 "MB10S" H 9350 1295 50  0000 C CNN
+F 2 "kicad_footprint_general:Diode_Bridge_MB10S" H 9340 1060 50  0001 C CNN
+F 3 "~" H 9340 1060 50  0001 C CNN
+	1    9300 1090
+	-1   0    0    -1  
+$EndComp
 $EndSCHEMATC
