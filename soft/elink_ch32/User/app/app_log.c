@@ -53,7 +53,7 @@ void app_log_task(void)
         }
         case LOG_RUN:
         {
-            pbc_easy_printf("APP RUNING\r\n");
+            //pbc_easy_printf("APP RUNING\r\n");
             break;
         }
         case LOG_IDLE:

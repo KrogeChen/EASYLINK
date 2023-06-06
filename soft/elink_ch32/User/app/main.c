@@ -83,6 +83,15 @@ void USARTx_CFG(void)
 
     USART_Cmd(USART2, ENABLE);
     USART_Cmd(USART3, ENABLE);
+
+    //GPIO_InitTypeDef GPIO_InitStructure = {0};
+
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+    GPIOA->BSHR = 0x0020;
 }
 void USART2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
 void USART3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
@@ -145,21 +154,39 @@ void app_general_task(void)
 
     if(pbc_pull_timerIsCompleted(&timer_txtest))
     {
-
+        enalbe_txd = 1;
+        pbc_reload_timerClock(&timer_txtest,500);
         if(enalbe_txd)
         {
-            pbc_reload_timerClock(&timer_txtest,1000);
+
             enalbe_txd = 0;
             TxCnt1 = 0;
+            GPIOA->BCR = 0x0020;
             while(TxCnt1 < TxSize1) /* USART2--->USART3 */
             {
-                USART_SendData(USART2, TxBuffer1[TxCnt1++]);
+
+                sdt_int8u amicode[2];
+                sdt_int8u temp_u8;
+
+                temp_u8 = 0x55;
+                amicode[0] = (((temp_u8&0x08) << 3) + ((temp_u8&0x04) << 2) + ((temp_u8&0x02) << 1) + (temp_u8&0x01)) + 0xaa;
+                amicode[1] = (((temp_u8&0x80) >> 1) + ((temp_u8&0x40) >> 2) + ((temp_u8&0x20) >> 3) + ((temp_u8&0x10) >> 4)) + 0xaa;
+                TxCnt1++;
+
+                USART_SendData(USART2, amicode[0]);
                 while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET) /* waiting for sending finish */
                 {
                 }
-            }
-        }
+                USART_SendData(USART2, amicode[1]);
+                while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET) /* waiting for sending finish */
+                {
+                }
 
+
+            }
+            GPIOA->BSHR = 0x0020;
+        }
+        pbc_easy_printf("TXD");
     }
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
