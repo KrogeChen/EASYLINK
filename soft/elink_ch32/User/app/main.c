@@ -39,7 +39,7 @@ void USARTx_CFG(void)
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2 | RCC_APB1Periph_USART3, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
 
-    /* USART2 TX-->A.2   RX-->A.3 */
+    /* USART3 TX-->A.2   RX-->A.3 */
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
@@ -85,7 +85,7 @@ void USARTx_CFG(void)
     USART_Cmd(USART3, ENABLE);
 
     //GPIO_InitTypeDef GPIO_InitStructure = {0};
-
+    //A.05  EN
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
@@ -173,12 +173,12 @@ void app_general_task(void)
                 amicode[1] = (((temp_u8&0x80) >> 1) + ((temp_u8&0x40) >> 2) + ((temp_u8&0x20) >> 3) + ((temp_u8&0x10) >> 4)) + 0xaa;
                 TxCnt1++;
 
-                USART_SendData(USART2, amicode[0]);
-                while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET) /* waiting for sending finish */
+                USART_SendData(USART3, amicode[0]);
+                while(USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET) /* waiting for sending finish */
                 {
                 }
-                USART_SendData(USART2, amicode[1]);
-                while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET) /* waiting for sending finish */
+                USART_SendData(USART3, amicode[1]);
+                while(USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET) /* waiting for sending finish */
                 {
                 }
 
