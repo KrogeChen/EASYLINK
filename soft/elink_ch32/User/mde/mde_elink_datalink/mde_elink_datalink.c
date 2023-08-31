@@ -11,6 +11,8 @@
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #include ".\mde_elink_datalink.h"
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#define TIMEOUTRX_V    100
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //数据缓冲区结构体
 //------------------------------------------------------------------------------
 #define MAX_PAY_LEN  256
@@ -57,6 +59,8 @@ typedef struct
     sdt_int16u tx_len;
     sdt_int16u tx_index;
 
+    timerClock_def        timer_rx_timeout;
+
     CBK_ELINK_DLK_ACCEPT* cbk_link_appect;                    //接收数据回调
     sdt_bool (*pull_phy_receive_byte)(sdt_int8u* pOut_rcb);   //从PHY获取一个接收字节
     sdt_bool (*pull_phy_tx_conflict)(void);                   //获取PHY的冲突情况
@@ -71,6 +75,13 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
 {
     ELINK_RUN_STATUS_DEF rd_run_s;
     sdt_int8u rec_byte;
+
+    pbc_timerMillRun_task(&mix_elink_oper->timer_rx_timeout);
+
+    if(pbc_pull_timerIsOnceTriggered(&mix_elink_oper->timer_rx_timeout))
+    {
+        mix_elink_oper->elink_link_run_s = elink_rs_idle;
+    }
 
     if(0 == mix_elink_oper->pull_phy_receive_byte)
     {
@@ -97,6 +108,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                 {
                     if(0xff == rec_byte)
                     {
+                        pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_sfd;
                     }
                 }
@@ -119,6 +131,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                 {
                     if(0xc5 == rec_byte)
                     {
+                        pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_len_h;
                     }
                     else if(0xff == rec_byte)
@@ -127,6 +140,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     }
                     else
                     {
+                        pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_pre;
                     }
                 }
@@ -136,6 +150,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
             {
                 if(mix_elink_oper->pull_phy_receive_byte(&rec_byte))
                 {
+                    pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
                     mix_elink_oper->rx_buff.edlk_len[0] = rec_byte;
                     mix_elink_oper->rx_len = (sdt_int16u)rec_byte <<8;
                     mix_elink_oper->elink_link_run_s = elink_rs_rx_len_l;
@@ -150,10 +165,12 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     mix_elink_oper->rx_len |= (sdt_int16u)rec_byte & 0x00ff;
                     if(mix_elink_oper->rx_len > (MAX_PAY_LEN + 8))
                     {
+                        pbc_stop_timerIsOnceTriggered(&mix_elink_oper->timer_rx_timeout);
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_pre; //溢出
                     }
                     else
                     {
+                        pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
                         mix_elink_oper->rx_index = 5;
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_data;
                     }
@@ -169,6 +186,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
 
                     if(mix_elink_oper->rx_index < (mix_elink_oper->rx_len + 3))
                     {
+                        pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
                     }
                     else
                     {//end receive data,verify data
@@ -186,6 +204,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                             appcet_bytes.pPayload = &mix_elink_oper->rx_buff.edlk_pay[0];
                             mix_elink_oper->cbk_link_appect(&appcet_bytes);         //回调,处理数据
                         }
+                        pbc_stop_timerIsOnceTriggered(&mix_elink_oper->timer_rx_timeout);
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_pre;
                     }
                 }
@@ -263,13 +282,13 @@ void mde_elink_dlk_task_process(void)
 //出口: 无
 //------------------------------------------------------------------------------
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-void mde_elink_datalink_cfg(sdt_int8u in_sbr,ELINK_PRAR_DEF in_link_para)
+void mde_elink_datalink_cfg(sdt_int8u in_sbr,ELINK_PRAR_DEF* pIn_link_para)
 {
     elink_dlk_solid_cfg();
     if(in_sbr < MAX_SOLID)
     {
-        elink_dlk_solid[in_sbr].local_address = in_link_para.elk_local_addr;
-        elink_dlk_solid[in_sbr].cbk_link_appect = in_link_para.cbk_elink_dlk_accept;
+        elink_dlk_solid[in_sbr].local_address = pIn_link_para->elk_local_addr;
+        elink_dlk_solid[in_sbr].cbk_link_appect = pIn_link_para->cbk_elink_dlk_accept;
     }
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

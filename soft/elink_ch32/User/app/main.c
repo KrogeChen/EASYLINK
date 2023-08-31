@@ -149,6 +149,7 @@ void USART3_IRQHandler(void)
 void app_general_task(void)
 {
    //mde_watchdog_reload();
+    app_debug_task();
 
     macro_cTimerTig(timer_txtest,timerType_millisecond);
 

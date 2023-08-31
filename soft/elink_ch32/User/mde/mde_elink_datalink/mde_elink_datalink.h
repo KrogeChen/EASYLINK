@@ -55,7 +55,7 @@ sdt_int8u callback_accept_data_s0(ELIK_EXCHANGE_DEF* in_pAccept_data)
 //出口: 无
 //------------------------------------------------------------------------------
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-void mde_elink_datalink_cfg(sdt_int8u in_sbr,ELINK_PRAR_DEF in_link_para);
+void mde_elink_datalink_cfg(sdt_int8u in_sbr,ELINK_PRAR_DEF* pIn_link_para);
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //名称: E-link数据链路任务处理
 //功能: 处理数据链路的报文
