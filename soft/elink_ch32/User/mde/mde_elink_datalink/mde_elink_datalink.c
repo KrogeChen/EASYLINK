@@ -27,8 +27,7 @@ typedef union
         sdt_int8u edlk_src;
         sdt_int8u edlk_dst;
         sdt_int8u edlk_type;
-        sdt_int8u edlk_pay[MAX_PAY_LEN];
-        sdt_int8u edlk_fcs[2];
+        sdt_int8u edlk_pay[MAX_PAY_LEN + 2];
     };
     sdt_int8u edlk_raw[MAX_PAY_LEN + 11];
 }ELINK_DLK_BUFF_DEF;
@@ -191,8 +190,8 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     else
                     {//end receive data,verify data
                         sdt_int8u cala_crc[2];
-                        pbc_crc16_modbus_byte_big(&mix_elink_oper->rx_buff.edlk_len[0],mix_elink_oper->rx_len,&cala_crc[0]);
-                        if((cala_crc[0] == mix_elink_oper->rx_buff.edlk_fcs[0]) && (cala_crc[1] == mix_elink_oper->rx_buff.edlk_fcs[1]))
+                        pbc_crc16_modbus_byte(&mix_elink_oper->rx_buff.edlk_len[0],mix_elink_oper->rx_len,&cala_crc[0]);
+                        if((cala_crc[0] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 2]) && (cala_crc[1] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 1]))
                         {
                             ELIK_EXCHANGE_DEF appcet_bytes;
 
@@ -336,7 +335,7 @@ sdt_bool mde_transfet_elink_dlk(sdt_int8u in_sbr,ELIK_EXCHANGE_DEF* in_pTransfet
             elink_dlk_solid[in_sbr].tx_buff.edlk_pay[i] = in_pTransfet_data->pPayload[i];
         }
         elink_dlk_solid[in_sbr].tx_len = in_pTransfet_data->elk_payload_len + 11;
-        pbc_crc16_modbus_byte_big(&elink_dlk_solid[in_sbr].tx_buff.edlk_len[0],(in_pTransfet_data->elk_payload_len + 6),&elink_dlk_solid[in_sbr].tx_buff.edlk_fcs[0]);
+        pbc_crc16_modbus_byte(&elink_dlk_solid[in_sbr].tx_buff.edlk_len[0],(in_pTransfet_data->elk_payload_len + 6),&elink_dlk_solid[in_sbr].tx_buff.edlk_pay[in_pTransfet_data->elk_payload_len]);
 
 
         elink_dlk_solid[in_sbr].plan_transfet = sdt_true;
