@@ -3,7 +3,6 @@
 //date: 25/08/2023
 //note: elink链路代码初始编写
 //------------------------------------------------------------------------------
-
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #include ".\snail_data_types.h"
 #include "..\..\pbc\pbc_tick_small\pbc_tick_small.h"
@@ -35,11 +34,12 @@ typedef union
 typedef enum
 {
     elink_rs_idle        = 0x00,
-    elink_rs_rx_pre      = 0x01,
-    elink_rs_rx_sfd      = 0x02,
-    elink_rs_rx_len_h    = 0x03,
-    elink_rs_rx_len_l    = 0x04,
-    elink_rs_rx_data     = 0x05,
+    elink_rs_rx_str      = 0x01,
+    elink_rs_rx_pre      = 0x02,
+    elink_rs_rx_sfd      = 0x03,
+    elink_rs_rx_len_h    = 0x04,
+    elink_rs_rx_len_l    = 0x05,
+    elink_rs_rx_data     = 0x06,
 
     elink_rs_tx_data     = 0x10,
     elink_rs_tx_complete = 0x11,
@@ -61,10 +61,13 @@ typedef struct
     timerClock_def        timer_rx_timeout;
 
     CBK_ELINK_DLK_ACCEPT* cbk_link_appect;                    //接收数据回调
+    CBK_TRANSFET_COMPLETE* cbk_link_transfet_cpt;             //发送完毕回调
     sdt_bool (*pull_phy_receive_byte)(sdt_int8u* pOut_rcb);   //从PHY获取一个接收字节
     sdt_bool (*pull_phy_tx_conflict)(void);                   //获取PHY的冲突情况
     sdt_bool (*pull_phy_busy)(void);                          //获取PHY忙碌状态
     sdt_bool (*pull_phy_tx_cpt)(void);                        //获取tx数据发送完毕
+    void (*push_phy_start_tx)(void);                          //PHY开始发送数据
+    void (*push_phy_start_rx)(void);                          //PHY开始接收数据
     sdt_int16u (*transfet_bytes_to_phy_tx)(sdt_int8u* in_pByte,sdt_int16u in_expect_bytes);  //转移数据
 }ELINK_DLK_OPER_DEF;
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -98,6 +101,12 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
         {
             case elink_rs_idle:
             {
+                mix_elink_oper->elink_link_run_s = elink_rs_rx_str;
+                break;
+            }
+            case elink_rs_rx_str:
+            {
+                mix_elink_oper->push_phy_start_rx();
                 mix_elink_oper->elink_link_run_s = elink_rs_rx_pre;
                 break;
             }
@@ -119,6 +128,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     else
                     {
                         mix_elink_oper->tx_index = 0;
+                        mix_elink_oper->push_phy_start_tx();
                         mix_elink_oper->elink_link_run_s = elink_rs_tx_data;  //PHY 非忙碌,进入发送状态
                     }
                 }
@@ -189,9 +199,15 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     }
                     else
                     {//end receive data,verify data
+
                         sdt_int8u cala_crc[2];
-                        pbc_crc16_modbus_byte(&mix_elink_oper->rx_buff.edlk_len[0],mix_elink_oper->rx_len,&cala_crc[0]);
-                        if((cala_crc[0] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 2]) && (cala_crc[1] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 1]))
+
+                        if(18 == mix_elink_oper->rx_len)
+                        {
+
+                        }
+                        pbc_crc16_modbus_byte(&mix_elink_oper->rx_buff.edlk_len[0],(mix_elink_oper->rx_len - 2),&cala_crc[0]);
+                        if((cala_crc[0] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 8]) && (cala_crc[1] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 7]))
                         {
                             ELIK_EXCHANGE_DEF appcet_bytes;
 
@@ -213,7 +229,9 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
             {
                 if(mix_elink_oper->pull_phy_tx_conflict())
                 {
-                    mix_elink_oper->elink_link_run_s = elink_rs_rx_pre; //回到接收状态
+                    mix_elink_oper->plan_transfet = sdt_false;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_str; //回到接收状态
+                    mix_elink_oper->cbk_link_transfet_cpt(TANS_FAULT_CFT);
                 }
                 else
                 {//转移数据到PHY
@@ -234,12 +252,15 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
             {
                 if(mix_elink_oper->pull_phy_tx_conflict())
                 {
-                    mix_elink_oper->elink_link_run_s = elink_rs_rx_pre; //回到接收状态
+                    mix_elink_oper->plan_transfet = sdt_false;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_str; //回到接收状态
+                    mix_elink_oper->cbk_link_transfet_cpt(TANS_FAULT_CFT);
                 }
                 else if(mix_elink_oper->pull_phy_tx_cpt())
                 {
                     mix_elink_oper->plan_transfet = sdt_false;          //清除发送计划
-                    mix_elink_oper->elink_link_run_s = elink_rs_rx_pre; //回到接收状态
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_str; //回到接收状态
+                    mix_elink_oper->cbk_link_transfet_cpt(0);
                 }
                 break;
             }
@@ -313,7 +334,7 @@ sdt_bool mde_pull_elink_dlk_busy(sdt_int8u in_sbr)
 //
 //出口:sdt_true 发送数据交换完毕
 //------------------------------------------------------------------------------
-sdt_bool mde_transfet_elink_dlk(sdt_int8u in_sbr,ELIK_EXCHANGE_DEF* in_pTransfet_data)
+sdt_bool mde_transfet_elink_dlk(sdt_int8u in_sbr,ELIK_EXCHANGE_DEF* in_pTransfet_data,CBK_TRANSFET_COMPLETE* in_pCbk_transfet_cpt)
 {
     if(sdt_false == elink_dlk_solid[in_sbr].plan_transfet)
     {
@@ -337,6 +358,7 @@ sdt_bool mde_transfet_elink_dlk(sdt_int8u in_sbr,ELIK_EXCHANGE_DEF* in_pTransfet
         elink_dlk_solid[in_sbr].tx_len = in_pTransfet_data->elk_payload_len + 11;
         pbc_crc16_modbus_byte(&elink_dlk_solid[in_sbr].tx_buff.edlk_len[0],(in_pTransfet_data->elk_payload_len + 6),&elink_dlk_solid[in_sbr].tx_buff.edlk_pay[in_pTransfet_data->elk_payload_len]);
 
+        elink_dlk_solid[in_sbr].cbk_link_transfet_cpt = in_pCbk_transfet_cpt;
 
         elink_dlk_solid[in_sbr].plan_transfet = sdt_true;
         return(sdt_true);

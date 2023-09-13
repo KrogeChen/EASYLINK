@@ -492,7 +492,7 @@ static void SetSysClockTo72_HSE(void)
     RCC->CFGR0 &= (uint32_t)((uint32_t)~(RCC_PLLSRC | RCC_PLLXTPRE |
                                         RCC_PLLMULL));
 
-    RCC->CFGR0 |= (uint32_t)(RCC_PLLSRC_HSE | RCC_PLLXTPRE_HSE | RCC_PLLMULL9);
+    RCC->CFGR0 |= (uint32_t)(RCC_PLLSRC_HSE | RCC_PLLXTPRE_HSE | RCC_PLLMULL6); //12 * 6
 
     /* Enable PLL */
     RCC->CTLR |= RCC_PLLON;

@@ -5,6 +5,13 @@
     #include ".\snail_data_types.h"
 #endif
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//发送数据完成回调,
+//参数:回调故障字
+//------------------------------------------------------------------------------
+#define TANS_FAULT_CFT           0x00000001//冲突
+//------------------------------------------------------------------------------
+typedef void (CBK_TRANSFET_COMPLETE)(sdt_int32u in_faultBits);
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 typedef struct
 {
     sdt_int8u  elk_src_addr;    //源地址
@@ -13,6 +20,7 @@ typedef struct
     sdt_int8u  elk_type;        //类型
     sdt_int16u elk_payload_len; //负载数据长度
     sdt_int8u* pPayload;        //负载数据
+
 }ELIK_EXCHANGE_DEF;
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 typedef sdt_int8u (CBK_ELINK_DLK_ACCEPT)(ELIK_EXCHANGE_DEF* in_pAccept_data);
@@ -22,6 +30,7 @@ typedef struct
     sdt_int8u               elk_local_addr;    //本机地址
     CBK_ELINK_DLK_ACCEPT    *cbk_elink_dlk_accept; //data link 接收数据回调
 }ELINK_PRAR_DEF;
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //
@@ -77,13 +86,14 @@ sdt_bool mde_pull_elink_dlk_busy(sdt_int8u in_sbr);
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //名称: 发送一串数据到数据链路
 //功能:
-//入口: in_sbr  ---实列号
-//
+//入口: in_sbr               ---实列号
+//      in_pTransfet_data    ---交换数据
+//      in_pCbk_transfet_cpt ---发送完毕回调
 //
 //
 //出口:sdt_true 发送数据交换完毕
 //------------------------------------------------------------------------------
-sdt_bool mde_transfet_elink_dlk(sdt_int8u in_sbr,ELIK_EXCHANGE_DEF* in_pTransfet_data);
+sdt_bool mde_transfet_elink_dlk(sdt_int8u in_sbr,ELIK_EXCHANGE_DEF* in_pTransfet_data,CBK_TRANSFET_COMPLETE* in_pCbk_transfet_cpt);
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
