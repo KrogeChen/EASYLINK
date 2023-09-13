@@ -50,8 +50,8 @@ void app_debug_task(void)
             }
             else
             {
-                //mde_transfet_elink_dlk(0,&elk_exchange_data,callback_elink_link_data_transfet);
-                //pbc_easy_printf("RUN");
+                mde_transfet_elink_dlk(0,&elk_exchange_data,callback_elink_link_data_transfet);
+                pbc_easy_printf("RUN");
             }
         }
     }

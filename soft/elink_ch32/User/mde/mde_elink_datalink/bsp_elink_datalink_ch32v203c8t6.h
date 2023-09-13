@@ -63,8 +63,7 @@ void TIM3_IRQHandler(void)
         {
             txdcmpc = TXCPC_ISEND;
         }
-
-        GPIOC->BSHR = 0x2000;
+        GPIOA->BSHR = 0x8000;
     }
 }
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -73,7 +72,7 @@ void EXTI0_IRQHandler(void)
 {
    if(EXTI_GetITStatus(EXTI_Line0)!=RESET)
    {
-      GPIOC->BCR = 0x2000;
+      GPIOA->BCR = 0x8000;
 
       bus_busy = sdt_true;
       TIM3->CTLR1 &= ~0x0001;
@@ -181,7 +180,12 @@ void USARTx_CFG(void)
     GPIO_Init(GPIOC, &GPIO_InitStructure);
     GPIOC->BSHR = 0x2000;                          //debug io
 
-
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_15;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+    GPIOA->BSHR = 0x8000;                          //debug io
 
    // if(0 != (USART3->CTLR1 & USART_CTLR1_RXNEIE))
    // {
@@ -472,7 +476,7 @@ sdt_bool bsp_pull_phy_tx_cpt(void)
         txdcmpc = TXCPC_IDLE;
         GPIOA->BSHR = 0x0020;
 
-        //GPIOC->BSHR = 0x2000;
+        GPIOC->BSHR = 0x2000;
 
 
         return(sdt_true);
@@ -494,7 +498,7 @@ void bsp_push_phy_start_tx(void)
     bus_conflict = sdt_false;
     GPIOA->BCR = 0x0020;
 
-    //GPIOC->BCR = 0x2000;
+    GPIOC->BCR = 0x2000;
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
