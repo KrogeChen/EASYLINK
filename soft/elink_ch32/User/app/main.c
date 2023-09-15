@@ -8,6 +8,7 @@
 void app_general_task(void)
 {
    //mde_watchdog_reload();
+    pbc_pilot_light_task();
     app_debug_task();
 
     macro_cTimerTig(timer_runs,timerType_millisecond);

@@ -12,6 +12,7 @@
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #include ".\snail_data_types.h"
 #include "..\.\pbc\pbc_tick_small\pbc_tick_small.h"
+#include "..\.\pbc\pbc_pilot_light\pbc_pilot_light.h"
 #include "..\.\pbc\pbc_data_convert\pbc_data_convert.h"
 //------------------------------------------------------------------------------
 #include "..\.\mde\mde_elink_datalink\mde_elink_datalink.h"

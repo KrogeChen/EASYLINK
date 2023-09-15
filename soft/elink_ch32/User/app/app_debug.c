@@ -3,18 +3,47 @@
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #include "ch32v20x.h"
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#define ACCEPT_LAMP      0
+#define TRANSFET_RIGHT   1
+#define TRANSFET_ERR     2
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //接收回调
 //------------------------------------------------------------------------------
 sdt_int8u callback_elink_link_data_accept(ELIK_EXCHANGE_DEF* in_pAccept_data)
 {
-    //GPIOC->BSHR = 0x2000;
-    pbc_easy_printf("THIS IS LINK DATA");
+    PILOT_PARA_DEF  pilot_para;
+
+    pilot_para.led_num = ACCEPT_LAMP;
+    pilot_para.loop_cnt = 1;
+    pilot_para.lighten_ms = 100;
+    pilot_para.dark_ms = 100;
+
+    pbc_push_pilot_light_ldms(&pilot_para);
+    //pbc_easy_printf("THIS IS LINK DATA");
     return(0);
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 void callback_elink_link_data_transfet(sdt_int32u in_faultBits)
 {
+    PILOT_PARA_DEF  pilot_para;
+    if(in_faultBits)
+    {
+        pilot_para.led_num = TRANSFET_ERR;
+        pilot_para.loop_cnt = 1;
+        pilot_para.lighten_ms = 300;
+        pilot_para.dark_ms = 100;
 
+        pbc_push_pilot_light_ldms(&pilot_para);
+    }
+    else
+    {
+        pilot_para.led_num = TRANSFET_RIGHT;
+        pilot_para.loop_cnt = 1;
+        pilot_para.lighten_ms = 100;
+        pilot_para.dark_ms = 100;
+
+        pbc_push_pilot_light_ldms(&pilot_para);
+    }
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 static sdt_int8u detxd_buff[128];
@@ -33,7 +62,8 @@ void app_debug_task(void)
 
         if(pbc_pull_timerIsCompleted(&timer_txdd))
         {
-            pbc_reload_timerClock(&timer_txdd,2000);
+
+            pbc_easy_printf("RUN");
 
             ELIK_EXCHANGE_DEF elk_exchange_data;
 
@@ -43,17 +73,21 @@ void app_debug_task(void)
             elk_exchange_data.elk_payload_len =10;
             elk_exchange_data.pPayload = &detxd_buff[0];
 
-
-
-            if(mde_pull_elink_dlk_busy(0))
+            if(mde_transfet_elink_dlk(0,&elk_exchange_data,callback_elink_link_data_transfet))
             {
+                pbc_reload_timerClock(&timer_txdd,2000);
+
             }
-            else
-            {
-                mde_transfet_elink_dlk(0,&elk_exchange_data,callback_elink_link_data_transfet);
-                pbc_easy_printf("RUN");
-            }
-        }
+
+            //PILOT_PARA_DEF  pilot_para;
+            //
+            //pilot_para.led_num = TRANSFET_RIGHT;
+            //pilot_para.loop_cnt = 1;
+            //pilot_para.lighten_ms = 100;
+            //pilot_para.dark_ms = 100;
+            //
+            //pbc_push_pilot_light_ldms(&pilot_para);
+        }   //
     }
     else
     {

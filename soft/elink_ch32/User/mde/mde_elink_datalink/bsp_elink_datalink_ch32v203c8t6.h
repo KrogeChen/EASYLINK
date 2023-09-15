@@ -2,7 +2,7 @@
 #include ".\snail_data_types.h"
 #include "ch32v20x.h"
 // #include "intrinsics.h"
-
+#include "..\..\pbc\pbc_pilot_light\pbc_pilot_light.h"
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #define DSIABLE_INTERRUPT  __disable_irq()
 #define ENABLE_INTERRUPT   __enable_irq()
@@ -19,6 +19,8 @@ static volatile sdt_bool bus_busy;
 static volatile sdt_bool bus_conflict;
 static volatile TXDCMPC_DEF txdcmpc;
 static volatile sdt_int8u ctrl_conflict;
+static volatile sdt_int8u rx_ami_idx = 0;
+static sdt_int8u rx_ami[2];
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //TIM3 总线忙碌检测,下降延发生后,后续2000us视为总线忙碌,TIM3用于2000us的释放时间,约4个字符的时间,同时清洗AMI接收编码的index
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -58,29 +60,56 @@ void TIM3_IRQHandler(void)
     if(TIM3->INTFR & 0x0001)
     {
         TIM3->INTFR &= ~0x0001;
+
+        //rx_ami_idx = 0;
         bus_busy = sdt_false;
         if(TXCPC_WTEND == txdcmpc)
         {
             txdcmpc = TXCPC_ISEND;
         }
-        GPIOA->BSHR = 0x8000;
+        //GPIOA->BSHR = 0x8000;
     }
 }
 //+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-void EXTI0_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-void EXTI0_IRQHandler(void)
+//void EXTI0_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+////-------------------------------------------------------------------------
+//void EXTI0_IRQHandler(void)
+//{
+//   if(EXTI_GetITStatus(EXTI_Line0)!=RESET)
+//   {
+//      //GPIOA->BCR = 0x8000;
+//
+//      bus_busy = sdt_true;
+//      TIM3->CTLR1 &= ~0x0001;
+//      TIM3->CNT = 0;
+//      TIM3->CTLR1 = 0x0001;  //CEN
+//      EXTI_ClearITPendingBit(EXTI_Line0);     /* Clear Flag */
+//   }
+//}
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+void EXTI15_10_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+//-------------------------------------------------------------------------
+void EXTI15_10_IRQHandler(void)
 {
-   if(EXTI_GetITStatus(EXTI_Line0)!=RESET)
+   if(EXTI_GetITStatus(EXTI_Line11)!=RESET)
    {
-      GPIOA->BCR = 0x8000;
+       //PILOT_PARA_DEF  pilot_para;
+       //
+       //pilot_para.led_num = 0;
+       //pilot_para.loop_cnt = 1;
+       //pilot_para.lighten_ms = 100;
+       //pilot_para.dark_ms = 100;
+       //
+       //pbc_push_pilot_light_ldms(&pilot_para);
 
       bus_busy = sdt_true;
       TIM3->CTLR1 &= ~0x0001;
       TIM3->CNT = 0;
       TIM3->CTLR1 = 0x0001;  //CEN
-      EXTI_ClearITPendingBit(EXTI_Line0);     /* Clear Flag */
+      EXTI_ClearITPendingBit(EXTI_Line11);     /* Clear Flag */
    }
 }
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 /*********************************************************************
  * @fn      USARTx_CFG
  *
@@ -101,38 +130,49 @@ void USARTx_CFG(void)
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO , ENABLE);
 
-    /* USART3 TX-->A.2   RX-->A.3 */
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_3;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
+
     /* USART3 TX-->B.10  RX-->B.11 */
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
 
+
     EXTI_InitTypeDef EXTI_InitStructure = {0};
-    //NVIC_InitTypeDef NVIC_InitStructure = {0};
-    /* GPIOA ----> EXTI_Line0 */
-    GPIO_EXTILineConfig(GPIO_PortSourceGPIOA, GPIO_PinSource0);
-    EXTI_InitStructure.EXTI_Line = EXTI_Line0;
+
+    GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource11);
+    EXTI_InitStructure.EXTI_Line = EXTI_Line11;
     EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
     EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
     EXTI_InitStructure.EXTI_LineCmd = ENABLE;
     EXTI_Init(&EXTI_InitStructure);
 
-    NVIC_InitStructure.NVIC_IRQChannel = EXTI0_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannel = EXTI15_10_IRQn;
     NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
     NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
     NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
     NVIC_Init(&NVIC_InitStructure);
+
+    EXTI->INTENR &= (~EXTI_Line11);
+
+    //EXTI_InitTypeDef EXTI_InitStructure = {0};
+    ////NVIC_InitTypeDef NVIC_InitStructure = {0};
+    ///* GPIOA ----> EXTI_Line0 */
+    //GPIO_EXTILineConfig(GPIO_PortSourceGPIOA, GPIO_PinSource0);
+    //EXTI_InitStructure.EXTI_Line = EXTI_Line0;
+    //EXTI_InitStructure.EXTI_Mode = EXTI_Mode_Interrupt;
+    //EXTI_InitStructure.EXTI_Trigger = EXTI_Trigger_Falling;
+    //EXTI_InitStructure.EXTI_LineCmd = ENABLE;
+    //EXTI_Init(&EXTI_InitStructure);
+    //
+    //NVIC_InitStructure.NVIC_IRQChannel = EXTI0_IRQn;
+    //NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+    //NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
+    //NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    //NVIC_Init(&NVIC_InitStructure);
 
 
     USART_InitStructure.USART_BaudRate = 19200;
@@ -173,25 +213,6 @@ void USARTx_CFG(void)
     GPIO_Init(GPIOA, &GPIO_InitStructure);
     GPIOA->BSHR = 0x0020;                          //control io
 
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);  //PC13
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_13;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOC, &GPIO_InitStructure);
-    GPIOC->BSHR = 0x2000;                          //debug io
-
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_15;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-    GPIOA->BSHR = 0x8000;                          //debug io
-
-   // if(0 != (USART3->CTLR1 & USART_CTLR1_RXNEIE))
-   // {
-    //    GPIOC->BCR = 0x2000;   //debug
-
-    //}
 
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -220,8 +241,6 @@ void USART3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
  *
  * @return  none
  */
-static sdt_int8u rx_ami_idx = 0;
-static sdt_int8u rx_ami[2];
 //--------------------------------------------------------------------
 void USART3_IRQHandler(void)
 {
@@ -265,6 +284,10 @@ void USART3_IRQHandler(void)
                     }
                     else
                     {//conflict is occurrence
+                        //tx_in = 0;
+                        //tx_out = 0;
+                        tx_in = tx_out;
+                        USART_ITConfig(USART3, (USART_IT_TXE), DISABLE);
                         bus_conflict = sdt_true;
                         //GPIOC->BSHR = 0x2000;   //debug
                     }
@@ -359,6 +382,9 @@ void USART3_IRQHandler(void)
                 }
                 if(cft_shadow == cft_out)  //overflow
                 {//conflict is occurrence , bus is error or line off
+                    //tx_in = 0;
+                    tx_in = tx_out;
+                    USART_ITConfig(USART3, (USART_IT_TXE), DISABLE);
                     bus_conflict = sdt_true;
                     //GPIOC->BSHR = 0x2000;   //debug
                 }
@@ -476,8 +502,6 @@ sdt_bool bsp_pull_phy_tx_cpt(void)
         txdcmpc = TXCPC_IDLE;
         GPIOA->BSHR = 0x0020;
 
-        GPIOC->BSHR = 0x2000;
-
 
         return(sdt_true);
     }
@@ -493,12 +517,13 @@ sdt_bool bsp_pull_phy_tx_cpt(void)
 //------------------------------------------------------------------------------
 void bsp_push_phy_start_tx(void)
 {
+    EXTI->INTENR &= (~EXTI_Line11);
+
     cft_in = 0;
     cft_out = 0;
     bus_conflict = sdt_false;
     GPIOA->BCR = 0x0020;
 
-    GPIOC->BCR = 0x2000;
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -513,6 +538,9 @@ void bsp_push_phy_start_rx(void)
     rx_ami_idx = 0;
     ctrl_conflict = 0;
     GPIOA->BSHR = 0x0020;
+
+    EXTI->INTFR = (EXTI_Line11);
+    EXTI->INTENR |= (EXTI_Line11);
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //名称: 转移数据到phy的发送缓冲区
@@ -531,6 +559,13 @@ sdt_int16u bsp_transfet_bytes_to_phy_tx(sdt_int8u* in_pByte,sdt_int16u in_expect
     remain_bytes = in_expect_bytes;
     while(1)
     {
+        if(bus_conflict)
+        {
+            DSIABLE_INTERRUPT;
+            tx_in = tx_out;
+            ENABLE_INTERRUPT;
+            return(0);
+        }
         index_shadow = tx_in;
         index_shadow++;
         if(index_shadow > (TXB_SIZE - 1))
