@@ -3,6 +3,8 @@
 #include "ch32v20x.h"
 // #include "intrinsics.h"
 #include "..\..\pbc\pbc_pilot_light\pbc_pilot_light.h"
+//--------------------------------------------------------------------
+#include "stdlib.h"
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 #define DSIABLE_INTERRUPT  __disable_irq()
 #define ENABLE_INTERRUPT   __enable_irq()
@@ -15,6 +17,7 @@ typedef enum
     TXCPC_ISEND = 0x03,
 }TXDCMPC_DEF;
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+static volatile sdt_int16u rand_seed;
 static volatile sdt_bool bus_busy;
 static volatile sdt_bool bus_conflict;
 static volatile TXDCMPC_DEF txdcmpc;
@@ -259,6 +262,7 @@ void USART3_IRQHandler(void)
 
             if(ctrl_conflict)
             {
+                rand_seed += rx_data;
                 if(cft_in == cft_out)  //empty rxd is error data
                 {
 
@@ -594,5 +598,20 @@ sdt_int16u bsp_transfet_bytes_to_phy_tx(sdt_int8u* in_pByte,sdt_int16u in_expect
 
 
     return(remain_bytes);
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: 获取避退随机数时间,由BSP产生避退随机数
+//功能:
+//入口:
+//
+//
+//出口: 避退随机数时间,ms
+//------------------------------------------------------------------------------
+sdt_int16u bsp_pull_random_backtime(void)
+{
+    srand(rand_seed);
+
+    return(rand()%2048);
 }
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
