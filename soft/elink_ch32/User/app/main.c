@@ -27,6 +27,8 @@ void main(void)
     //mde_watchdog_cfg();
     pbc_system_clock_cfg();
 
+    USART_Printf_Init(1000000);
+    printf("This is printf example\r\n");
     pbc_easy_printf("boot starting\r\n");
     pbc_task_create(app_general_task,0);
 	pbc_task_create(app_log_task,2000);

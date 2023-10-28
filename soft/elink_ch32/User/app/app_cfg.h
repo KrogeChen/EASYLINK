@@ -10,6 +10,7 @@
 #define  MAIN_VERSION    0x21
 #define  SON_VERSION     0x01
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#include "debug.h"
 #include ".\snail_data_types.h"
 #include "..\.\pbc\pbc_tick_small\pbc_tick_small.h"
 #include "..\.\pbc\pbc_pilot_light\pbc_pilot_light.h"
