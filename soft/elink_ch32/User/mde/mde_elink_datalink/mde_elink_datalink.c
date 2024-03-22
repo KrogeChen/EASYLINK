@@ -14,21 +14,24 @@
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //数据缓冲区结构体
 //------------------------------------------------------------------------------
-#define MAX_PAY_LEN  256
+#define MAX_PAY_LEN  246
+#define RAW_PAYIDX   10
 typedef union
 {
     struct
     {
         sdt_int8u edlk_pre[2];
         sdt_int8u edlk_sfd;
-        sdt_int8u edlk_len[2];
-        sdt_int8u edlk_cbits;
         sdt_int8u edlk_src;
         sdt_int8u edlk_dst;
-        sdt_int8u edlk_type;
-        sdt_int8u edlk_pay[MAX_PAY_LEN + 2];
+		sdt_int8u edlk_fcs[2];
+		sdt_int8u edlk_cbits;
+		sdt_int8u edlk_type;
+        sdt_int8u edlk_len;
+
+        sdt_int8u edlk_pay[MAX_PAY_LEN];
     };
-    sdt_int8u edlk_raw[MAX_PAY_LEN + 11];
+    sdt_int8u edlk_raw[256];
 }ELINK_DLK_BUFF_DEF;
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 typedef enum
@@ -37,9 +40,14 @@ typedef enum
     elink_rs_rx_str      = 0x01,
     elink_rs_rx_pre      = 0x02,
     elink_rs_rx_sfd      = 0x03,
-    elink_rs_rx_len_h    = 0x04,
-    elink_rs_rx_len_l    = 0x05,
-    elink_rs_rx_data     = 0x06,
+	elink_rs_rx_src      = 0x04,
+	elink_rs_rx_dst      = 0x05,
+    elink_rs_rx_fcsh     = 0x06,
+	elink_rs_rx_fcsl     = 0x07,
+	elink_rs_rx_cbits    = 0x08,
+	elink_rs_rx_type     = 0x09,
+    elink_rs_rx_len      = 0x0a,
+    elink_rs_rx_pay      = 0x0b,
 
     elink_rs_tx_data     = 0x10,
     elink_rs_tx_complete = 0x11,
@@ -52,8 +60,8 @@ typedef struct
     sdt_int8u  local_address;
     ELINK_RUN_STATUS_DEF elink_link_run_s;
     sdt_bool   plan_transfet;   //准备发送数据
-    sdt_int16u rx_len;
-    sdt_int16u rx_index;
+
+    sdt_int8u  rx_index;
     ELINK_DLK_BUFF_DEF rx_buff;
     ELINK_DLK_BUFF_DEF tx_buff;
     sdt_int16u tx_len;
@@ -72,7 +80,7 @@ typedef struct
     sdt_bool (*pull_phy_tx_cpt)(void);                        //获取tx数据发送完毕
     void (*push_phy_start_tx)(void);                          //PHY开始发送数据
     void (*push_phy_start_rx)(void);                          //PHY开始接收数据
-    sdt_int16u (*transfet_bytes_to_phy_tx)(sdt_int8u* in_pByte,sdt_int16u in_expect_bytes);  //转移数据
+    sdt_int8u (*transfet_bytes_to_phy_tx)(sdt_int8u* in_pByte,sdt_int8u in_expect_bytes);  //转移数据
     sdt_int16u (*pull_random_backtime)(void);                 //获取随机避退时间
 }ELINK_DLK_OPER_DEF;
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -147,7 +155,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     if(0xc5 == rec_byte)
                     {
                         pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
-                        mix_elink_oper->elink_link_run_s = elink_rs_rx_len_h;
+                        mix_elink_oper->elink_link_run_s = elink_rs_rx_src;
                     }
                     else if(0xff == rec_byte)
                     {
@@ -161,24 +169,76 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                 }
                 break;
             }
-            case elink_rs_rx_len_h:
-            {
-                if(mix_elink_oper->pull_phy_receive_byte(&rec_byte))
+			case elink_rs_rx_src:
+			{
+				if(mix_elink_oper->pull_phy_receive_byte(&rec_byte)) 
+				{
+	                pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
+                    mix_elink_oper->rx_buff.edlk_src = rec_byte;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_dst;					
+				}
+				break;
+			}
+			case elink_rs_rx_dst:
+			{
+				if(mix_elink_oper->pull_phy_receive_byte(&rec_byte)) 
+			    {
+	                pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
+                    mix_elink_oper->rx_buff.edlk_dst = rec_byte;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_fcsh;					
+				}
+				break;
+			}
+			case elink_rs_rx_fcsh:
+			{
+				if(mix_elink_oper->pull_phy_receive_byte(&rec_byte)) 
                 {
-                    pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
-                    mix_elink_oper->rx_buff.edlk_len[0] = rec_byte;
-                    mix_elink_oper->rx_len = (sdt_int16u)rec_byte <<8;
-                    mix_elink_oper->elink_link_run_s = elink_rs_rx_len_l;
-                }
-                break;
-            }
-            case elink_rs_rx_len_l:
-            {
-                if(mix_elink_oper->pull_phy_receive_byte(&rec_byte))
+	                pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
+                    mix_elink_oper->rx_buff.edlk_fcs[0] = rec_byte;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_fcsl;
+				}
+				break;
+			}
+			case elink_rs_rx_fcsl:
+			{
+                if(mix_elink_oper->pull_phy_receive_byte(&rec_byte)) 
                 {
-                    mix_elink_oper->rx_buff.edlk_len[1] = rec_byte;
-                    mix_elink_oper->rx_len |= (sdt_int16u)rec_byte & 0x00ff;
-                    if(mix_elink_oper->rx_len > (MAX_PAY_LEN + 8))
+	                pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
+                    mix_elink_oper->rx_buff.edlk_fcs[1] = rec_byte;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_cbits;
+				}
+				break;
+			}
+			case elink_rs_rx_cbits:
+			{
+                if(mix_elink_oper->pull_phy_receive_byte(&rec_byte)) 
+                {
+	                pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
+                    mix_elink_oper->rx_buff.edlk_cbits = rec_byte;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_type;
+				}
+
+				break;
+			}
+			case elink_rs_rx_type:
+			{
+                if(mix_elink_oper->pull_phy_receive_byte(&rec_byte)) 
+                {
+	                pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
+                    mix_elink_oper->rx_buff.edlk_type = rec_byte;
+                    mix_elink_oper->elink_link_run_s = elink_rs_rx_type;
+				}
+
+				break;
+			}
+			case elink_rs_rx_len:
+			{
+                if(mix_elink_oper->pull_phy_receive_byte(&rec_byte)) 
+                {
+		            pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
+                    mix_elink_oper->rx_buff.edlk_len = rec_byte;
+				    
+				    if(mix_elink_oper->rx_buff.edlk_len > (MAX_PAY_LEN))
                     {
                         pbc_stop_timerIsOnceTriggered(&mix_elink_oper->timer_rx_timeout);
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_pre; //溢出
@@ -186,20 +246,25 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     else
                     {
                         pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
-                        mix_elink_oper->rx_index = 5;
-                        mix_elink_oper->elink_link_run_s = elink_rs_rx_data;
-                    }
-                }
-                break;
-            }
-            case elink_rs_rx_data:
-            {
+                        mix_elink_oper->rx_index = RAW_PAYIDX;
+                        mix_elink_oper->elink_link_run_s = elink_rs_rx_pay;
+                    }					
+				}
+				break;
+			}
+			case elink_rs_rx_pay:
+			{
                 if(mix_elink_oper->pull_phy_receive_byte(&rec_byte))
                 {
                     mix_elink_oper->rx_buff.edlk_raw[mix_elink_oper->rx_index] = rec_byte;
                     mix_elink_oper->rx_index ++;
 
-                    if(mix_elink_oper->rx_index < (mix_elink_oper->rx_len + 3))
+                    if(0 == mix_elink_oper->rx_index)
+                    {//溢出
+                        pbc_stop_timerIsOnceTriggered(&mix_elink_oper->timer_rx_timeout);
+                        mix_elink_oper->elink_link_run_s = elink_rs_rx_pre; //溢出
+					}
+                    else if(mix_elink_oper->rx_index < (mix_elink_oper->rx_buff.edlk_len + RAW_PAYIDX))
                     {
                         pbc_reload_timerClock(&mix_elink_oper->timer_rx_timeout,TIMEOUTRX_V);
                     }
@@ -207,13 +272,19 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                     {//end receive data,verify data
 
                         sdt_int8u cala_crc[2];
+						sdt_int8u recv_crc[2];
 
-                        if(18 == mix_elink_oper->rx_len)
-                        {
-
-                        }
-                        pbc_crc16_modbus_byte(&mix_elink_oper->rx_buff.edlk_len[0],(mix_elink_oper->rx_len - 2),&cala_crc[0]);
-                        if((cala_crc[0] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 8]) && (cala_crc[1] == mix_elink_oper->rx_buff.edlk_pay[mix_elink_oper->rx_len - 7]))
+                        //if(18 == mix_elink_oper->rx_len)
+                        //{
+						//
+                        //}
+						recv_crc[0] = mix_elink_oper->rx_buff.edlk_fcs[0];
+						recv_crc[1] = mix_elink_oper->rx_buff.edlk_fcs[1];
+						mix_elink_oper->rx_buff.edlk_fcs[0] = 0xff;
+						mix_elink_oper->rx_buff.edlk_fcs[1] = 0xff;
+						
+                        pbc_crc16_modbus_byte(&mix_elink_oper->rx_buff.edlk_src,(mix_elink_oper->rx_buff.edlk_len + 7),&cala_crc[0]);
+                        if((cala_crc[0] == recv_crc[0]) && (cala_crc[1] == recv_crc[1]))
                         {
                             ELIK_EXCHANGE_DEF appcet_bytes;
 
@@ -221,7 +292,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                             appcet_bytes.elk_src_addr = mix_elink_oper->rx_buff.edlk_src;
                             appcet_bytes.elk_dst_addr = mix_elink_oper->rx_buff.edlk_dst;
                             appcet_bytes.elk_type = mix_elink_oper->rx_buff.edlk_type;
-                            appcet_bytes.elk_payload_len = mix_elink_oper->rx_len - 8;
+                            appcet_bytes.elk_payload_len = mix_elink_oper->rx_buff.edlk_len;
                             appcet_bytes.pPayload = &mix_elink_oper->rx_buff.edlk_pay[0];
                             mix_elink_oper->cbk_link_appect(&appcet_bytes);         //回调,处理数据
                         }
@@ -229,8 +300,8 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                         mix_elink_oper->elink_link_run_s = elink_rs_rx_pre;
                     }
                 }
-                break;
-            }
+				break;
+			}
             case elink_rs_tx_data:
             {
                 if(mix_elink_oper->pull_phy_tx_conflict())
@@ -241,7 +312,7 @@ static void elink_link_data_status(ELINK_DLK_OPER_DEF* mix_elink_oper)
                 else
                 {//转移数据到PHY
 
-                    sdt_int16u remain_bytes;
+                    sdt_int8u remain_bytes;
 
                     remain_bytes = mix_elink_oper->transfet_bytes_to_phy_tx(&mix_elink_oper->tx_buff.edlk_raw[mix_elink_oper->tx_index],(mix_elink_oper->tx_len - mix_elink_oper->tx_index));
                     mix_elink_oper->tx_index = mix_elink_oper->tx_len - remain_bytes;
@@ -364,21 +435,27 @@ sdt_bool mde_transfet_elink_dlk(sdt_int8u in_sbr,ELIK_EXCHANGE_DEF* in_pTransfet
         elink_dlk_solid[in_sbr].tx_buff.edlk_pre[0] = 0xff;
         elink_dlk_solid[in_sbr].tx_buff.edlk_pre[1] = 0xff;
         elink_dlk_solid[in_sbr].tx_buff.edlk_sfd = 0xc5;
-        elink_dlk_solid[in_sbr].tx_buff.edlk_len[0] = (in_pTransfet_data->elk_payload_len + 8) >> 8;
-        elink_dlk_solid[in_sbr].tx_buff.edlk_len[1] = (in_pTransfet_data->elk_payload_len + 8);
-        elink_dlk_solid[in_sbr].tx_buff.edlk_cbits = in_pTransfet_data->elk_ctrl_bits;
         elink_dlk_solid[in_sbr].tx_buff.edlk_src = in_pTransfet_data->elk_src_addr;
         elink_dlk_solid[in_sbr].tx_buff.edlk_dst = in_pTransfet_data->elk_dst_addr;
+        elink_dlk_solid[in_sbr].tx_buff.edlk_fcs[0] = 0xff;
+        elink_dlk_solid[in_sbr].tx_buff.edlk_fcs[1] = 0xff;
+        elink_dlk_solid[in_sbr].tx_buff.edlk_cbits = in_pTransfet_data->elk_ctrl_bits;
         elink_dlk_solid[in_sbr].tx_buff.edlk_type = in_pTransfet_data->elk_type;
+        elink_dlk_solid[in_sbr].tx_buff.edlk_len = (in_pTransfet_data->elk_payload_len);
 
-        sdt_int16u i;
+
+        sdt_int8u i;
+        sdt_int8u calc_crc[2];
 
         for(i = 0;i < in_pTransfet_data->elk_payload_len;i++)
         {
             elink_dlk_solid[in_sbr].tx_buff.edlk_pay[i] = in_pTransfet_data->pPayload[i];
         }
-        elink_dlk_solid[in_sbr].tx_len = in_pTransfet_data->elk_payload_len + 11;
-        pbc_crc16_modbus_byte(&elink_dlk_solid[in_sbr].tx_buff.edlk_len[0],(in_pTransfet_data->elk_payload_len + 6),&elink_dlk_solid[in_sbr].tx_buff.edlk_pay[in_pTransfet_data->elk_payload_len]);
+        pbc_crc16_modbus_byte(&elink_dlk_solid[in_sbr].tx_buff.edlk_src,(elink_dlk_solid[in_sbr].tx_buff.edlk_len + 7),&calc_crc[0]);
+        elink_dlk_solid[in_sbr].tx_buff.edlk_fcs[0] = calc_crc[0];
+        elink_dlk_solid[in_sbr].tx_buff.edlk_fcs[1] = calc_crc[1];
+
+        elink_dlk_solid[in_sbr].tx_len = in_pTransfet_data->elk_payload_len + 10;  //转移长度控制
 
         elink_dlk_solid[in_sbr].cbk_link_transfet_cpt = in_pCbk_transfet_cpt;
 

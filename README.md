@@ -30,15 +30,15 @@ easy link protocol by homebus
 5、帧冲突管理
 
 
-前导|界定|长度|控制|源地址|目标地址|报文类型|报文负载|校验
-PRE  SFD  LEN  LCB   SRC     DST      TPE      PAY    FCS
- 2    1    2    1     1       1        1        n      2
+前导|界定|源地址|目标地址|校验|控制|报文类型|长度|报文负载
+PRE  SFD   SRC     DST    FCS  LCB    TPE    LEN    PAY    
+ 2    1     1       1      2    1      1      1      n      
  
 PRE  0xFF
 SFD  0xC5
-KEN  帧长度  从LEN到FCS的所有byte总和。
-FCS  CRC16   多项式0x8005,初始值0xFFFF,计算数据从LEN开始，PAY结束。
-LCB  BIT0:   1 公告报文
+LEN  PAY长度  PAY的byte总和。
+FCS  CRC16    多项式0x8005,初始值0xFFFF,计算数据从SRC开始，PAY结束，计算过程FCS使用0xFFFF替代。
+LCB  BIT0:    1 公告报文
 
 //--------------------------------------------------------------------------------------------------
 //特殊地址分配
