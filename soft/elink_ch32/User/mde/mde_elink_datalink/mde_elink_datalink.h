@@ -18,7 +18,7 @@ typedef struct
     sdt_int8u  elk_dst_addr;    //目标地址
     sdt_int8u  elk_ctrl_bits;   //控制字
     sdt_int8u  elk_type;        //类型
-    sdt_int16u elk_payload_len; //负载数据长度
+    sdt_int8u  elk_payload_len; //负载数据长度
     sdt_int8u* pPayload;        //负载数据
 
 }ELIK_EXCHANGE_DEF;

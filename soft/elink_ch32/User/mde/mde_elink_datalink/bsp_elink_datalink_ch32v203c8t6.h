@@ -554,7 +554,7 @@ void bsp_push_phy_start_rx(void)
 //
 //出口: 剩余未转移字节数
 //------------------------------------------------------------------------------
-sdt_int16u bsp_transfet_bytes_to_phy_tx(sdt_int8u* in_pByte,sdt_int16u in_expect_bytes)
+sdt_int8u bsp_transfet_bytes_to_phy_tx(sdt_int8u* in_pByte,sdt_int8u in_expect_bytes)
 {
     sdt_int8u index_shadow;
     sdt_int8u i = 0;
@@ -614,4 +614,370 @@ sdt_int16u bsp_pull_random_backtime(void)
 
     return(rand()%2048);
 }
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//RS485PHY
+//TIM4用于冲突和发送时序控制，定时器最小分辨率1us
+//TX2--PA02，RX2--PA03，SEL--PB06
+//EXTI_Line03 冲突检测
+//------------------------------------------------------------------------------
+//TIM4 总线忙碌检测,下降延发生后,后续2000us视为总线忙碌,TIM4用于2000us的释放时间,约4个字符的时间
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+void bsp_tim4_cfg(void)
+{
+
+    NVIC_InitTypeDef  NVIC_InitStructure = {0};
+
+   // NVIC_PriorityGroupConfig(NVIC_PriorityGroup_2);
+//----------------------------------------------------------------------------------
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
+
+    TIM4->CTLR1 = 0x0088;        //0000 - 00 00 - 1 00 0 - 1000
+    TIM4->CTLR2 = 0x0000;
+    TIM4->PSC = 71;              //1us
+    TIM4->ATRLR = 2000;
+    TIM4->DMAINTENR = 0x0001;    //UIE
+
+    TIM4->CTLR1 |= 0x0001;       //CEN
+
+    NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
+    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_Init(&NVIC_InitStructure);
+
+//------------------------------------------------------------------------------
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//------------------------------------------------------------------------------
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//------------------------------------------------------------------------------
+void TIM4_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+//------------------------------------------------------------------------------
+void TIM4_IRQHandler(void)
+{
+    if(TIM4->INTFR & 0x0001)
+    {
+        TIM4->INTFR &= ~0x0001;
+
+        //rx_ami_idx = 0;
+        //bus_busy = sdt_false;
+        //if(TXCPC_WTEND == txdcmpc)
+        //{
+        //    txdcmpc = TXCPC_ISEND;
+        //}
+        //GPIOA->BSHR = 0x8000;
+    }
+}
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+void EXTI2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+//-------------------------------------------------------------------------
+void EXTI2_IRQHandler(void)
+{
+   if(EXTI_GetITStatus(EXTI_Line2)!=RESET)
+   {
+       //PILOT_PARA_DEF  pilot_para;
+       //
+       //pilot_para.led_num = 0;
+       //pilot_para.loop_cnt = 1;
+       //pilot_para.lighten_ms = 100;
+       //pilot_para.dark_ms = 100;
+       //
+       //pbc_push_pilot_light_ldms(&pilot_para);
+
+      bus_busy = sdt_true;
+      TIM3->CTLR1 &= ~0x0001;
+      TIM3->CNT = 0;
+      TIM3->CTLR1 = 0x0001;  //CEN
+      EXTI_ClearITPendingBit(EXTI_Line2);     /* Clear Flag */
+   }
+}
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+void USART2_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+//+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+/*********************************************************************
+ * @fn      USART3_IRQHandler
+ *
+ * @brief   This function handles USART3 global interrupt request.
+ *
+ * @return  none
+ */
+//--------------------------------------------------------------------
+void USART2_IRQHandler(void)
+{
+    sdt_int8u rx_data;
+    sdt_int8u loop_data;
+    sdt_int8u index_shadow;
+
+
+    if(USART_GetITStatus(USART2, USART_IT_RXNE) != RESET)
+    {
+
+        if(RESET != USART_GetFlagStatus(USART2,USART_FLAG_RXNE))
+        {
+
+            rx_data = USART_ReceiveData(USART2);
+
+
+        }
+    }
+//----------------------------------------------------------------------
+    sdt_int8u tx_data;
+    sdt_bool tx_end = sdt_false;
+    static sdt_int8u amicode[2];
+    static sdt_bool next_ami = sdt_false;
+
+    if(0x00 != (USART2->CTLR1 & USART_CTLR1_TXEIE))
+    {
+        if(0x00 != (USART2->STATR & USART_FLAG_TXE))
+        {
+            if(next_ami)
+            {
+                next_ami = sdt_false;
+                tx_data = amicode[1];
+            }
+            else
+            {
+                if(tx_in == tx_out) //send data is empty
+                {
+                    tx_end = sdt_true;
+                }
+                else
+                {
+                    sdt_int8u transfet;
+                    transfet = tx_buff[tx_out];
+                    tx_out ++;
+                    if(tx_out > (TXB_SIZE - 1))
+                    {
+                        tx_out = 0;
+                    }
+                    if(tx_in == tx_out)    //next buff is empty
+                    {
+
+                    }
+                    amicode[0] = (((transfet&0x08) << 3) + ((transfet&0x04) << 2) + ((transfet&0x02) << 1) + (transfet&0x01)) + 0xaa;
+                    amicode[1] = (((transfet&0x80) >> 1) + ((transfet&0x40) >> 2) + ((transfet&0x20) >> 3) + ((transfet&0x10) >> 4)) + 0xaa;
+                    next_ami = sdt_true;
+
+                    tx_data = amicode[0];
+                }
+            }
+            if(tx_end)
+            {
+                ctrl_conflict |= CTRLCFT_TOEND;
+                USART_ITConfig(USART2, (USART_IT_TXE), DISABLE);
+
+                txdcmpc = TXCPC_TOEND;
+            }
+            else
+            {
+
+                USART_SendData(USART2,tx_data);
+                USART_ClearFlag(USART2,USART_FLAG_TC);
+                txdcmpc = TXCPC_IDLE;
+            }
+        }
+    }
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//--------------------------------------------------------------------------------
+void USART2_CFG(void)
+{
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//--------------------------------------------------------------------------------
+void bsp_elink_phy_cfg_rs485(void)
+{
+    USART2_CFG();
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: 获取接收数据
+//功能:
+//入口: 接收字节的指针
+//
+//出口: sdt_true 收到有效数据
+//------------------------------------------------------------------------------
+sdt_bool bsp_pull_phy_receive_byte_rs485(sdt_int8u* pOut_rcb)
+{
+    sdt_int8u rx_in_shadow,rx_out_shadow;
+    sdt_int8u data_shadow;
+
+    DSIABLE_INTERRUPT;
+    rx_in_shadow = rx_in;
+    rx_out_shadow = rx_out;
+    ENABLE_INTERRUPT;
+
+
+    if(rx_in_shadow == rx_out_shadow) //send data is empty
+    {
+        return(sdt_false);
+    }
+    else
+    {
+        data_shadow = rx_buff[rx_out_shadow];
+        rx_out_shadow++;
+        if(rx_out_shadow > (RXB_SIZE - 1))
+        {
+            rx_out_shadow = 0;
+        }
+
+        DSIABLE_INTERRUPT;
+        rx_out = rx_out_shadow;
+        ENABLE_INTERRUPT;
+
+        *pOut_rcb = data_shadow;
+        return(sdt_true);
+    }
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: PHY忙碌状态指示
+//功能:
+//入口:
+//
+//出口: sdt_true PHY忙碌
+//------------------------------------------------------------------------------
+sdt_bool bsp_pull_phy_busy(void)
+{
+
+    return(bus_busy);
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: 发送冲突指示
+//功能:
+//入口:
+//
+//出口: sdt_true 发生冲突
+//------------------------------------------------------------------------------
+sdt_bool bsp_pull_phy_tx_conflict(void)
+{
+    sdt_bool sd_cft;
+
+    sd_cft = bus_conflict;
+    DSIABLE_INTERRUPT;
+    bus_conflict = sdt_false;
+    ENABLE_INTERRUPT;
+
+    return(sd_cft);
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: 发送完成指示
+//功能:
+//入口:
+//
+//出口: sdt_true 数据发送完成
+//------------------------------------------------------------------------------
+sdt_bool bsp_pull_phy_tx_cpt(void)
+{
+    TXDCMPC_DEF sdw_txdcmpc;
+
+    sdw_txdcmpc = txdcmpc;
+    if(TXCPC_TOEND == sdw_txdcmpc)
+    {
+        txdcmpc = TXCPC_WTEND;
+        TIM3->CTLR1 &= ~0x0001;
+        TIM3->CNT = 0;
+        TIM3->CTLR1 = 0x0001;  //CEN
+    }
+    else if(TXCPC_ISEND == sdw_txdcmpc)
+    {
+        txdcmpc = TXCPC_IDLE;
+        GPIOA->BSHR = 0x0020;
+
+
+        return(sdt_true);
+    }
+
+    return(sdt_false);
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: PHY开始进入发送状态
+//功能:
+//入口:
+//
+//出口:
+//------------------------------------------------------------------------------
+void bsp_push_phy_start_tx(void)
+{
+    EXTI->INTENR &= (~EXTI_Line11);
+
+    cft_in = 0;
+    cft_out = 0;
+    bus_conflict = sdt_false;
+    GPIOA->BCR = 0x0020;
+
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: PHY开始进入接收状态
+//功能:
+//入口:
+//
+//出口:
+//------------------------------------------------------------------------------
+void bsp_push_phy_start_rx(void)
+{
+    rx_ami_idx = 0;
+    ctrl_conflict = 0;
+    GPIOA->BSHR = 0x0020;
+
+    EXTI->INTFR = (EXTI_Line11);
+    EXTI->INTENR |= (EXTI_Line11);
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//名称: 转移数据到phy的发送缓冲区
+//功能:
+//入口: in_pByte   转移数据的字节指针
+//      in_expect_bytes  期望发送的数据字节数
+//
+//出口: 剩余未转移字节数
+//------------------------------------------------------------------------------
+sdt_int8u bsp_transfet_bytes_to_phy_tx_rs485(sdt_int8u* in_pByte,sdt_int8u in_expect_bytes)
+{
+    sdt_int8u index_shadow;
+    sdt_int8u i = 0;
+    sdt_int16u remain_bytes;
+
+    remain_bytes = in_expect_bytes;
+    while(1)
+    {
+        if(bus_conflict)
+        {
+            DSIABLE_INTERRUPT;
+            tx_in = tx_out;
+            ENABLE_INTERRUPT;
+            return(0);
+        }
+        index_shadow = tx_in;
+        index_shadow++;
+        if(index_shadow > (TXB_SIZE - 1))
+        {
+            index_shadow = 0;
+        }
+        if(index_shadow == tx_out) //overflow
+        {
+            break;
+        }
+        else
+        {
+            DSIABLE_INTERRUPT;
+            tx_buff[tx_in] = in_pByte[i];
+            tx_in = index_shadow;
+            ENABLE_INTERRUPT;
+            i++ ;
+            remain_bytes --;
+            if(0 == remain_bytes)
+            {
+                break;
+            }
+        }
+    }
+    USART_ITConfig(USART2, (USART_IT_TXE), ENABLE);
+
+
+    return(remain_bytes);
+}
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++

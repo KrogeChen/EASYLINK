@@ -62,7 +62,7 @@ void bsp_push_phy_start_rx(void);
 //
 //出口: 剩余未转移字节数
 //------------------------------------------------------------------------------
-sdt_int16u bsp_transfet_bytes_to_phy_tx(sdt_int8u* in_pByte,sdt_int16u in_expect_bytes);
+sdt_int8u bsp_transfet_bytes_to_phy_tx(sdt_int8u* in_pByte,sdt_int8u in_expect_bytes);
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //名称: 获取避退随机数时间,由BSP产生避退随机数
 //功能:
